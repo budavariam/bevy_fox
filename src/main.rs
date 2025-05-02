@@ -5,6 +5,7 @@ use bevy::scene::{SceneRoot, SceneInstanceReady};
 use bevy::prelude::GltfAssetLabel;
 use bevy::animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex};
 use bevy::input::mouse::MouseWheel;
+use bevy::pbr::DirectionalLightShadowMap;
 
 
 use bevy::pbr::CascadeShadowConfigBuilder;
@@ -48,6 +49,7 @@ fn main() {
             brightness: 1000.,
             ..default()
         })
+        .insert_resource(DirectionalLightShadowMap { size: 4096 })
         .insert_resource(ClearColor(Color::srgb(0.5, 0.7, 1.0))) // Default sky color
         .init_resource::<MouseDragState>()
         .init_resource::<DayNightCycle>()
@@ -174,7 +176,7 @@ fn setup_camera_and_environment(
         },
         CascadeShadowConfigBuilder {
             first_cascade_far_bound: 200.0,
-            maximum_distance: 400.0,
+            maximum_distance: 2500.0,
             ..default()
         }
         .build(),
