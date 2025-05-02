@@ -7,9 +7,22 @@ use bevy::animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNode
 
 
 use bevy::pbr::CascadeShadowConfigBuilder;
+use bevy::input::mouse::{MouseMotion, MouseButton};
 
 // An example asset that contains a mesh and animation.
 const GLTF_PATH: &str = "models/animated/Fox.glb";
+const LIGHT_ROTATION_SPEED: f32 = 1.0;
+const CAMERA_ROTATION_SENSITIVITY: f32 = 0.005;
+
+// Resource to track if mouse is being dragged
+#[derive(Resource, Default)]
+struct MouseDragState {
+    dragging: bool,
+}
+
+// Component to identify the light
+#[derive(Component)]
+struct MainLight;
 
 fn main() {
     App::new()
@@ -18,9 +31,15 @@ fn main() {
             brightness: 2000.,
             ..default()
         })
+        .init_resource::<MouseDragState>()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup_mesh_and_animation)
         .add_systems(Startup, setup_camera_and_environment)
+        .add_systems(Update, (
+            rotate_light_system,
+            mouse_drag_system,
+            rotate_camera_system,
+        ))
         .run();
 }
 
@@ -111,8 +130,9 @@ fn setup_camera_and_environment(
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
     ));
 
-    // Light
+    // Light with MainLight component for identification
     commands.spawn((
+        MainLight,
         Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, 1.0, -PI / 4.)),
         DirectionalLight {
             shadows_enabled: true,
@@ -125,4 +145,71 @@ fn setup_camera_and_environment(
         }
         .build(),
     ));
+}
+
+fn rotate_light_system(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    mut query: Query<&mut Transform, With<MainLight>>,
+) {
+    if let Ok(mut transform) = query.single_mut() {
+        let mut rotation = 0.0;
+        
+        if keyboard_input.pressed(KeyCode::KeyA) {
+            rotation += LIGHT_ROTATION_SPEED * time.delta_secs();
+        }
+        
+        if keyboard_input.pressed(KeyCode::KeyD) {
+            rotation -= LIGHT_ROTATION_SPEED * time.delta_secs();
+        }
+        
+        if rotation != 0.0 {
+            // Rotate around Y axis
+            transform.rotate_y(rotation);
+        }
+    }
+}
+
+fn mouse_drag_system(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    mut drag_state: ResMut<MouseDragState>,
+) {
+    if mouse_button.pressed(MouseButton::Left) {
+        drag_state.dragging = true;
+    } else {
+        drag_state.dragging = false;
+    }
+}
+
+fn rotate_camera_system(
+    drag_state: Res<MouseDragState>,
+    mut mouse_motion_events: EventReader<MouseMotion>,
+    mut camera_query: Query<&mut Transform, With<Camera3d>>,
+) {
+    if !drag_state.dragging {
+        return;
+    }
+    
+    let mut rotation = Vec2::ZERO;
+    for event in mouse_motion_events.read() {
+        rotation += event.delta;
+    }
+    
+    if rotation.length_squared() > 0.0 {
+        if let Ok(mut camera_transform) = camera_query.single_mut() {
+            // Get the camera's current focus point (what it's looking at)
+            let forward = camera_transform.forward();
+            let distance = camera_transform.translation.length();
+            
+            // Rotate around Y axis for horizontal mouse movement
+            camera_transform.rotate_y(-rotation.x * CAMERA_ROTATION_SENSITIVITY);
+            
+            // Rotate around local X axis for vertical mouse movement
+            let right = camera_transform.right();
+            camera_transform.rotate_axis(right, -rotation.y * CAMERA_ROTATION_SENSITIVITY);
+            
+            // Maintain the same distance from origin
+            camera_transform.translation = -forward * distance;
+        }
+    }
 }
