@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy::scene::{SceneRoot, SceneInstanceReady};
 use bevy::prelude::GltfAssetLabel;
 use bevy::animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex};
+use bevy::input::mouse::MouseWheel;
 
 
 use bevy::pbr::CascadeShadowConfigBuilder;
@@ -44,7 +45,7 @@ fn main() {
     App::new()
         .insert_resource(AmbientLight {
             color: Color::WHITE,
-            brightness: 2000.,
+            brightness: 1000.,
             ..default()
         })
         .insert_resource(ClearColor(Color::srgb(0.5, 0.7, 1.0))) // Default sky color
@@ -59,6 +60,7 @@ fn main() {
             update_sky_color,
             mouse_drag_system,
             rotate_camera_system,
+            zoom_camera_system
         ))
         .run();
 }
@@ -167,7 +169,7 @@ fn setup_camera_and_environment(
         light_transform,
         DirectionalLight {
             shadows_enabled: true,
-            illuminance: 100000.0,
+            illuminance: 50000.0,
             ..default()
         },
         CascadeShadowConfigBuilder {
@@ -227,10 +229,10 @@ fn elevate_light_system(
                 .clamp(-PI / 2.0, PI / 2.0); // Clamp between midnight and noon
             
             // Get the current rotation as euler angles
-            let (mut x, y, z) = transform.rotation.to_euler(EulerRot::XYZ);
+            let (_, y, z) = transform.rotation.to_euler(EulerRot::XYZ);
             
             // Update the X rotation (elevation)
-            x = -day_night_cycle.sun_elevation;
+            let x = -day_night_cycle.sun_elevation;
             
             // Apply the new rotation
             transform.rotation = Quat::from_euler(EulerRot::XYZ, x, y, z);
@@ -295,8 +297,8 @@ fn update_sky_color(
     if let Ok(mut light) = query.single_mut() {
         // Adjust light brightness based on elevation
         if elevation > 0.0 {
-            // Day
-            light.illuminance = 100000.0 * (elevation / (PI / 2.0));
+            // Day - reduced maximum illuminance
+            light.illuminance = 50000.0 * (elevation / (PI / 2.0));
         } else {
             // Night - no directional light
             light.illuminance = 0.0;
@@ -346,6 +348,34 @@ fn rotate_camera_system(
             
             // Maintain the same distance from origin
             camera_transform.translation = -forward * distance;
+        }
+    }
+}
+
+// System to zoom camera in and out with mouse wheel
+fn zoom_camera_system(
+    mut mouse_wheel_events: EventReader<MouseWheel>,
+    mut camera_query: Query<&mut Transform, With<Camera3d>>,
+) {
+    let mut zoom_amount = 0.0;
+    for event in mouse_wheel_events.read() {
+        zoom_amount += event.y;
+    }
+
+    if zoom_amount != 0.0 {
+        if let Ok(mut camera_transform) = camera_query.single_mut() {
+            // Zoom by moving camera along its forward vector
+            let forward = camera_transform.forward();
+            let new_translation = camera_transform.translation + forward * zoom_amount * 10.0;
+
+            // Clamp zoom to prevent going too far out or too close
+            let min_distance = 80.0;
+            let max_distance = 1500.0;
+            let distance = new_translation.length();
+            
+            if distance > min_distance && distance < max_distance {
+                camera_transform.translation = new_translation;
+            }
         }
     }
 }
